@@ -1,0 +1,135 @@
+/**
+ * content.css - Styles for the Translation Popup in Instant Translator Extension
+ * 
+ * This CSS file provides styling for the translation popup that appears
+ * when text is selected on a webpage. It includes styles for:
+ * 
+ * 1. The main popup container with appropriate z-index and positioning
+ * 2. Loading indicator with an animated spinner
+ * 3. Successful translation result display
+ * 4. Error message styling with distinct colors
+ * 5. Animation keyframes for the loading spinner
+ * 
+ * The styles are designed to be non-intrusive and compatible with most websites,
+ * using high z-index values to ensure the popup appears above other page elements.
+ */
+
+/* Translation popup styles */
+.translation-popup {
+  position: absolute;
+  max-width: 100%;
+  min-width: 100px;
+  padding: 8px 12px;
+  background-color: rgba(255, 255, 255, 0.9); /* Slightly transparent background */
+  color: #333;
+  border-radius: 4px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+  font-size: 14px;
+  line-height: 1.4;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  z-index: 9999;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  backdrop-filter: blur(2px); /* Slight blur effect for modern browsers */
+  transition: opacity 0.2s ease-in-out;
+}
+
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+  .translation-popup {
+    background-color: rgba(40, 40, 40, 0.9);
+    color: #f0f0f0;
+    border-color: rgba(255, 255, 255, 0.1);
+  }
+}
+
+.translation-popup.loading {
+  font-style: italic;
+  color: #666;
+}
+
+.translation-popup.error {
+  color: #e74c3c;
+}
+
+/* Close button */
+.translation-popup .close-btn {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 16px;
+  height: 16px;
+  font-size: 12px;
+  line-height: 16px;
+  text-align: center;
+  cursor: pointer;
+  opacity: 0.5;
+  border-radius: 50%;
+}
+
+.translation-popup .close-btn:hover {
+  opacity: 1;
+  background-color: rgba(0, 0, 0, 0.1);
+}
+
+/* Translation content */
+.translation-popup .content {
+  margin-right: 12px;
+  word-break: break-word;
+}
+
+/* Fallback model info */
+.translation-popup .fallback-info {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(0, 0, 0, 0.1);
+  font-size: 11px;
+  color: #7f8c8d;
+  font-style: italic;
+}
+
+@media (prefers-color-scheme: dark) {
+  .translation-popup .fallback-info {
+    border-top-color: rgba(255, 255, 255, 0.1);
+    color: #95a5a6;
+  }
+}
+
+.translation-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 5px;
+  color: #666;
+  font-style: italic;
+}
+
+.translation-loading::after {
+  content: '';
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  margin-left: 8px;
+  border: 2px solid #ddd;
+  border-top: 2px solid #3498db;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+.translation-result {
+  padding: 5px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.translation-error {
+  padding: 5px;
+  color: #e74c3c;
+  font-style: italic;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+} 

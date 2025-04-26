@@ -1,0 +1,180 @@
+<!--
+  popup.html - Popup UI for Instant Translator Chrome Extension
+  
+  This HTML file defines the popup interface that appears when the user clicks
+  on the extension icon in the browser toolbar. It provides:
+  
+  1. A simple interface for changing the source and target translation languages
+  2. Button to check the status of the Ollama API connection
+  
+  The popup is designed to be compact and focused on the most commonly used settings,
+  with inline CSS for styling to minimize HTTP requests.
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Translator Settings</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+      margin: 0;
+      padding: 15px;
+      width: 300px;
+      color: #333;
+    }
+    
+    h1 {
+      font-size: 16px;
+      margin-top: 0;
+      margin-bottom: 15px;
+      color: #333;
+      border-bottom: 1px solid #eee;
+      padding-bottom: 8px;
+      display: flex;
+      align-items: center;
+    }
+    
+    h1 img {
+      width: 24px;
+      height: 24px;
+      margin-right: 8px;
+    }
+    
+    .form-group {
+      margin-bottom: 15px;
+    }
+    
+    label {
+      display: block;
+      margin-bottom: 5px;
+      font-weight: 500;
+      font-size: 13px;
+    }
+    
+    select {
+      width: 100%;
+      padding: 8px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      background-color: #f9f9f9;
+      font-size: 14px;
+    }
+    
+    select:focus {
+      outline: none;
+      border-color: #3498db;
+    }
+    
+    .status {
+      padding: 10px;
+      border-radius: 4px;
+      font-size: 13px;
+      margin-bottom: 15px;
+    }
+    
+    .status.error {
+      background-color: #FFECEC;
+      color: #e74c3c;
+      border: 1px solid #f5d0d0;
+    }
+    
+    .status.success {
+      background-color: #E7F5E9;
+      color: #27ae60;
+      border: 1px solid #c8e6cb;
+    }
+    
+    .btn {
+      display: inline-block;
+      padding: 8px 12px;
+      background-color: #3498db;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 13px;
+      text-decoration: none;
+      text-align: center;
+      width: 100%;
+    }
+    
+    .btn:hover {
+      background-color: #2980b9;
+    }
+    
+    .checkbox-group {
+      margin-bottom: 15px;
+      border: 1px solid #eee;
+      padding: 10px;
+      border-radius: 4px;
+      background-color: #f9f9f9;
+    }
+    
+    .checkbox-label {
+      display: flex;
+      align-items: center;
+      font-weight: normal;
+      margin-bottom: 8px;
+      cursor: pointer;
+    }
+    
+    .checkbox-label:last-child {
+      margin-bottom: 0;
+    }
+    
+    .checkbox-label input {
+      margin-right: 8px;
+    }
+    
+    .checkbox-label .description {
+      font-size: 11px;
+      color: #666;
+      margin-top: 2px;
+      margin-left: 20px;
+    }
+  </style>
+</head>
+<body>
+  <h1><img src="images/icon48.png" alt="Logo"> Instant Translator</h1>
+  
+  <div id="status-container"></div>
+  
+  <div class="form-group">
+    <label for="source-language">Translate from:</label>
+    <select id="source-language">
+      <!-- Language options will be populated by JavaScript -->
+    </select>
+  </div>
+  
+  <div class="form-group">
+    <label for="target-language">Translate to:</label>
+    <select id="target-language">
+      <!-- Language options will be populated by JavaScript -->
+    </select>
+  </div>
+  
+  <div class="form-group">
+    <label>Translation Style:</label>
+    <div class="checkbox-group">
+      <label class="checkbox-label">
+        <input type="radio" name="translation-style" value="natural" checked>
+        Natural Translation
+        <div class="description">Translates the meaning and context naturally</div>
+      </label>
+      <label class="checkbox-label">
+        <input type="radio" name="translation-style" value="literal">
+        Word-for-Word Translation
+        <div class="description">Translates each word directly (better for learning)</div>
+      </label>
+    </div>
+  </div>
+  
+  <div class="form-group">
+    <a href="#" id="check-status" class="btn">Check Ollama Status</a>
+  </div>
+  
+  <script src="popup.js"></script>
+</body>
+</html> 
