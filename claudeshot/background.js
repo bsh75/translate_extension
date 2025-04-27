@@ -16,18 +16,15 @@
  * and the contextMenus API to add right-click menu options for translation.
  */
 
-// Load non-module scripts like js-yaml
-try {
-  importScripts('js-yaml.min.js'); // Ensure this path is correct relative to extension root
-  console.log('js-yaml loaded successfully via importScripts.');
-} catch (e) {
-  console.error('Failed to load js-yaml.min.js via importScripts:', e);
-  // Handle the error appropriately - maybe fall back to default config without parsing
-}
+// --- ES Module Imports ---
+
+// No longer need js-yaml import
+// import { load as jsyamlLoad } from './js-yaml.min.js';
 
 // Import all potential backend modules statically
 // NOTE: These backend files (ollama.js, etc.) MUST use ES module 'export' syntax now.
 import * as ollamaBackend from './backends/ollama.js';
+import * as chromeApiBackend from './backends/chromeApi.js';
 // Example: import * as anotherBackend from './backends/another.js';
 // ... import other backends as needed ...
 
@@ -73,7 +70,7 @@ const defaultConfig = {
 async function initialize() {
   console.log('Initializing background script...');
   try {
-    // js-yaml should be available now if importScripts worked
+    // js-yaml is now imported via ES Module syntax
     await loadAndProcessConfig();
     // loadBackendModule will now select from pre-imported modules
     await loadBackendModule();
@@ -109,20 +106,18 @@ async function initialize() {
   }
 }
 
-// Load and parse the config.yml file
+// Load and parse the config.json file
 async function loadAndProcessConfig() {
-  console.log('Attempting to load config.yml...');
+  console.log('Attempting to load config.json...');
   try {
-    const response = await fetch(chrome.runtime.getURL('config.yml'));
+    const response = await fetch(chrome.runtime.getURL('config.json'));
     if (!response.ok) {
-      throw new Error(`Failed to fetch config.yml: ${response.statusText}`);
+      throw new Error(`Failed to fetch config.json: ${response.statusText}`);
     }
-    const yamlText = await response.text();
-    // jsyaml should be globally available via importScripts
-    if (typeof jsyaml === 'undefined') {
-        throw new Error('jsyaml library not loaded correctly.');
-    }
-    const loadedConfig = jsyaml.load(yamlText);
+    const jsonText = await response.text();
+    
+    // Use native JSON.parse
+    const loadedConfig = JSON.parse(jsonText);
 
     // Merge with defaults to ensure all keys exist
     config = { ...defaultConfig, ...loadedConfig };
@@ -140,7 +135,12 @@ async function loadAndProcessConfig() {
     console.log('Configuration loaded and processed successfully:', config);
 
   } catch (error) {
-    console.error('Error loading or processing config.yml, using default configuration:', error); // Changed to error
+    // Handle potential JSON parsing errors as well
+    if (error instanceof SyntaxError) {
+        console.error('Error parsing config.json:', error);
+    } else {
+        console.error('Error loading or processing config.json, using default configuration:', error);
+    }
     config = { ...defaultConfig };
     // Ensure supportedLanguagesList is populated even on error using defaults
     supportedLanguagesList = [...(config.supportedLanguages || [])];

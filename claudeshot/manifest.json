@@ -41,7 +41,7 @@
   "web_accessible_resources": [
     {
       "resources": [
-        "config.yml"
+        "config.json"
       ],
       "matches": ["<all_urls>"]
     }

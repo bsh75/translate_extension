@@ -6,86 +6,119 @@
  */
 
 // --- Ollama Backend Configuration ---
-const ollamaConfig = {
-  models: [
-    {
-      id: 'gemma3:1b',
-      name: 'Gemma 3 1B',
-      endpoint: 'http://localhost:11434/api/generate',
-      default: true,
-      promptTemplates: {
-        natural: "Translate the following text from {sourceLanguage} to {targetLanguage}: \"{text}\". Provide only the translation without any additional commentary.",
-        literal: "Translate the following text from {sourceLanguage} to {targetLanguage} word-for-word, preserving the original structure as much as possible: \"{text}\". Focus on direct translation of each word rather than natural flow. Provide only the translation without any additional commentary."
-      }
-    },
-    {
-      id: '7shi/gemma-2-jpn-translate:2b-instruct-q8_0',
-      name: 'Gemma 2 2B Japanese',
-      endpoint: 'http://localhost:11434/api/generate',
-      default: false,
-      promptTemplates: {
-        natural: 'Translate this text from {sourceLanguage} to {targetLanguage}: "{text}". Provide only the translation without any additional commentary.',
-        literal: 'Translate this text from {sourceLanguage} to {targetLanguage} word-for-word: "{text}". Focus on direct translation. Provide only the translation without any additional commentary.'
-      }
-    }
-  ],
-  languagePairs: [
-    {
-      source: 'en',
-      target: 'ja',
-      preferredModel: '7shi/gemma-2-jpn-translate:2b-instruct-q8_0'
-    },
-    {
-      source: 'ja',
-      target: 'en',
-      preferredModel: '7shi/gemma-2-jpn-translate:2b-instruct-q8_0'
-    },
-    {
-      source: 'en',
-      target: 'es',
-      preferredModel: 'gemma3:1b'
-    },
-    {
-      source: 'es',
-      target: 'en',
-      preferredModel: 'gemma3:1b'
-    }
-  ],
-  languageDetection: [
-    { pattern: '[\\u3040-\\u309F\\u30A0-\\u30FF\\u4E00-\\u9FAF]', language: 'ja', preferredModel: '7shi/gemma-2-jpn-translate:2b-instruct-q8_0' },
-    { pattern: '[\\u0400-\\u04FF]', language: 'ru', preferredModel: 'gemma3:1b' },
-    { pattern: '[\\u0600-\\u06FF]', language: 'ar', preferredModel: 'gemma3:1b' },
-    { pattern: '[\\u0900-\\u097F]', language: 'hi', preferredModel: 'gemma3:1b' },
-    { pattern: '[\\u4E00-\\u9FFF]', language: 'zh', preferredModel: 'gemma3:1b' },
-    { pattern: '[\\uAC00-\\uD7A3]', language: 'ko', preferredModel: 'gemma3:1b' },
-    { pattern: '.*', language: 'en', preferredModel: 'gemma3:1b' } // Default
-  ],
-  fallbackModelId: 'gemma3:1b'
-};
+let ollamaConfig = {}; // Will be populated during initialize()
+
+/**
+ * Initialize the Ollama backend with configuration from the global config.
+ * 
+ * @param {Object} config The global configuration object
+ */
+export function initialize(config) {
+  console.log('Initializing Ollama backend with config:', config);
+  
+  // Extract Ollama-specific configuration
+  if (config && config.backendSettings && config.backendSettings.ollama) {
+    ollamaConfig = config.backendSettings.ollama;
+    console.log('Ollama configuration loaded:', ollamaConfig);
+  } else {
+    console.error('Failed to load Ollama configuration from global config');
+    // Set minimal default config to prevent crashes
+    ollamaConfig = {
+      models: [],
+      languagePairs: [],
+      languageDetection: { patterns: [] },
+      fallbackModelId: null
+    };
+  }
+  
+  // Validate the configuration
+  if (!ollamaConfig.models || ollamaConfig.models.length === 0) {
+    console.error('No models defined in Ollama configuration');
+  }
+  
+  // Log available models
+  console.log('Available models:', ollamaConfig.models.map(m => m.id));
+  
+  // Log language pairs with preferred models
+  console.log('Language pairs with preferred models:', ollamaConfig.languagePairs);
+  
+  return { success: true };
+}
 
 // Find the default model defined in the configuration
 function getDefaultModel() {
-  return ollamaConfig.models.find(m => m.default) || ollamaConfig.models[0] || null;
+  // First try to find a model explicitly marked as default
+  const defaultModel = ollamaConfig.models?.find(m => m.default === true);
+  if (defaultModel) {
+    console.log(`Found explicitly marked default model: ${defaultModel.id}`);
+    return defaultModel;
+  }
+  
+  // If no default is marked, use the first model
+  if (ollamaConfig.models && ollamaConfig.models.length > 0) {
+    console.log(`No explicitly marked default model, using first model: ${ollamaConfig.models[0].id}`);
+    return ollamaConfig.models[0];
+  }
+  
+  console.error('No models available in Ollama configuration');
+  return null;
 }
 
 // Find the specified fallback model
 function getFallbackModel() {
-  const fallback = ollamaConfig.models.find(m => m.id === ollamaConfig.fallbackModelId);
-  return fallback || getDefaultModel();
+  if (!ollamaConfig.fallbackModelId) {
+    console.log('No fallback model ID specified, using default model');
+    return getDefaultModel();
+  }
+  
+  const fallback = ollamaConfig.models?.find(m => m.id === ollamaConfig.fallbackModelId);
+  if (fallback) {
+    console.log(`Found fallback model: ${fallback.id}`);
+    return fallback;
+  }
+  
+  console.warn(`Specified fallback model '${ollamaConfig.fallbackModelId}' not found, using default model`);
+  return getDefaultModel();
 }
 
 // Find the preferred model for a specific language pair
 function getPreferredModel(sourceLangCode, targetLangCode) {
+  console.log(`[getPreferredModel] Input: source=${sourceLangCode}, target=${targetLangCode}`);
+
   if (!sourceLangCode || sourceLangCode === 'auto') {
+    console.log(`[getPreferredModel] Source is null or auto, returning default.`);
     return getDefaultModel(); // Can't determine preference without source
   }
 
-  const pair = ollamaConfig.languagePairs.find(p => p.source === sourceLangCode && p.target === targetLangCode);
+  // Check if we have a specific language pair configuration
+  const pair = ollamaConfig.languagePairs?.find(p => 
+    p.source === sourceLangCode && p.target === targetLangCode
+  );
+  
+  console.log(`[getPreferredModel] Found language pair:`, pair);
+
   if (pair && pair.preferredModel) {
-    const model = ollamaConfig.models.find(m => m.id === pair.preferredModel);
-    if (model) return model;
+    const preferredModelId = pair.preferredModel;
+    console.log(`[getPreferredModel] Preferred model ID from pair: ${preferredModelId}`);
+    
+    // Find the model object for this ID
+    const model = ollamaConfig.models?.find(m => m.id === preferredModelId);
+    console.log(`[getPreferredModel] Found model object for ID:`, model);
+    
+    if (model) {
+      console.log(`[getPreferredModel] Returning preferred model: ${model.id}`);
+      return model;
+    } else {
+      console.warn(`[getPreferredModel] Preferred model ID "${preferredModelId}" from language pair config was NOT found in the models list!`);
+    }
+  } else {
+    console.log(`[getPreferredModel] No specific language pair found for ${sourceLangCode} -> ${targetLangCode}.`);
   }
-  return getDefaultModel();
+
+  // If we reach here, no preferred model was found or applicable
+  const defaultModel = getDefaultModel();
+  console.log(`[getPreferredModel] Returning default model: ${defaultModel?.id}`);
+  return defaultModel; // Fallback to default model
 }
 
 // Format the prompt using the correct template for the model and style
@@ -114,43 +147,46 @@ function formatPrompt(model, sourceLanguage, targetLanguage, text, style) {
 // Helper function to make the actual API call
 async function callOllamaApi(modelId, endpoint, prompt) {
   console.log(`Calling Ollama API. Model: ${modelId}, Endpoint: ${endpoint}`);
-  const response = await fetch(endpoint, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      // Origin might be needed depending on CORS setup, but background script fetch usually handles it
-      // 'Origin': 'chrome-extension://' + chrome.runtime.id 
-    },
-    body: JSON.stringify({
-      model: modelId,
-      prompt: prompt,
-      stream: false
-    })
-  });
+  
+  try {
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: modelId,
+        prompt: prompt,
+        stream: false
+      })
+    });
 
-  console.log('Ollama API Response Status:', response.status, response.statusText);
+    console.log('Ollama API Response Status:', response.status, response.statusText);
 
-  if (!response.ok) {
-    const errorBody = await response.text();
-    console.error('Ollama API Error Body:', errorBody);
-    throw new Error(`API error ${response.status}: ${response.statusText}`);
-  }
+    if (!response.ok) {
+      const errorBody = await response.text();
+      console.error('Ollama API Error Body:', errorBody);
+      throw new Error(`API error ${response.status}: ${response.statusText}`);
+    }
 
-  const data = await response.json();
-  console.log('Ollama API Parsed Response:', data);
+    const data = await response.json();
+    console.log('Ollama API Parsed Response:', data);
 
-  // Basic response cleaning
-  let translation = data.response || '';
-  translation = translation.replace(/^(Here's the translation:|The translation is:|Translated text:|Translation:)/i, '').trim();
-  translation = translation.replace(/^["']|["']$/g, '');
+    // Basic response cleaning
+    let translation = data.response || '';
+    translation = translation.replace(/^(Here's the translation:|The translation is:|Translated text:|Translation:)/i, '').trim();
+    translation = translation.replace(/^["']|["']$/g, '');
 
-  if (!translation) {
+    if (!translation) {
       console.warn("Received empty translation response from Ollama.");
-      // Consider throwing an error or returning a specific message
-      // throw new Error("Received empty translation from Ollama.");
-  }
+      throw new Error("Received empty translation from Ollama.");
+    }
 
-  return translation;
+    return translation;
+  } catch (error) {
+    console.error(`Error calling Ollama API with model ${modelId}:`, error);
+    throw error; // Re-throw to let the caller handle it
+  }
 }
 
 // --- Exported Functions ---
@@ -166,18 +202,33 @@ async function callOllamaApi(modelId, endpoint, prompt) {
  * @returns {Promise<object>} Promise resolving to { success: true, translation: string, usedFallback: boolean, modelUsed: string } or { success: false, error: string }
  */
 export async function translate(text, sourceLangCode, targetLangCode, style) {
-  const preferredModel = getPreferredModel(sourceLangCode, targetLangCode);
-  const fallbackModel = getFallbackModel();
-
-  if (!preferredModel) {
-      return { success: false, error: "No suitable Ollama model found in configuration." };
+  console.log(`Ollama translate called: ${sourceLangCode} -> ${targetLangCode}, style: ${style}`);
+  
+  // Ensure we have configuration
+  if (!ollamaConfig || !ollamaConfig.models || ollamaConfig.models.length === 0) {
+    return { 
+      success: false, 
+      error: "Ollama backend not properly initialized or no models configured." 
+    };
   }
 
-  // If source is 'auto', we should ideally detect first. 
-  // For now, we'll let Ollama handle it by providing a generic source language in the prompt,
-  // but a dedicated detection step using chrome.i18n or another model could be added here.
-  const actualSourceLang = sourceLangCode === 'auto' ? 'Auto-detect' : sourceLangCode; // Use name for prompt
+  // Get the preferred model for this language pair
+  const preferredModel = getPreferredModel(sourceLangCode, targetLangCode);
+  if (!preferredModel) {
+    return { 
+      success: false, 
+      error: "No suitable Ollama model found for this language pair." 
+    };
+  }
 
+  // Get the fallback model (different from preferred if possible)
+  const fallbackModel = getFallbackModel();
+  
+  // If source is 'auto', we should ideally detect first. 
+  // For now, we'll let Ollama handle it by providing a generic source language in the prompt
+  const actualSourceLang = sourceLangCode === 'auto' ? 'Auto-detect' : sourceLangCode;
+
+  // Format the prompt for the preferred model
   const prompt = formatPrompt(preferredModel, actualSourceLang, targetLangCode, text, style);
 
   try {
@@ -189,12 +240,14 @@ export async function translate(text, sourceLangCode, targetLangCode, style) {
       usedFallback: false,
       modelUsed: preferredModel.id
     };
-  } catch (error) {
-    console.warn(`Translation with preferred model ${preferredModel.id} failed:`, error);
+  } catch (preferredError) {
+    console.warn(`Translation with preferred model ${preferredModel.id} failed:`, preferredError);
 
+    // Try fallback model if it's different from the preferred model
     if (fallbackModel && fallbackModel.id !== preferredModel.id) {
       console.log(`Falling back to model: ${fallbackModel.id}`);
       const fallbackPrompt = formatPrompt(fallbackModel, actualSourceLang, targetLangCode, text, style);
+      
       try {
         const fallbackTranslation = await callOllamaApi(fallbackModel.id, fallbackModel.endpoint, fallbackPrompt);
         return {
@@ -207,14 +260,14 @@ export async function translate(text, sourceLangCode, targetLangCode, style) {
         console.error(`Fallback translation with ${fallbackModel.id} also failed:`, fallbackError);
         return {
           success: false,
-          error: `Translation failed with preferred (${preferredModel.id}) and fallback (${fallbackModel.id}) models.`
+          error: `Translation failed with both preferred (${preferredModel.id}) and fallback (${fallbackModel.id}) models.`
         };
       }
     } else {
       // No fallback possible or fallback is the same as preferred
       return {
         success: false,
-        error: `Translation failed with model ${preferredModel.id}. No fallback available or fallback failed.`
+        error: `Translation failed with model ${preferredModel.id}. Error: ${preferredError.message}`
       };
     }
   }
@@ -226,20 +279,34 @@ export async function translate(text, sourceLangCode, targetLangCode, style) {
  * @returns {Promise<object>} Promise resolving to { status: 'running' } or { status: 'error', message: string }
  */
 export async function checkStatus() {
-  const modelToCheck = getDefaultModel(); // Check status using the default model
+  // Ensure we have configuration
+  if (!ollamaConfig || !ollamaConfig.models || ollamaConfig.models.length === 0) {
+    return { 
+      status: 'error', 
+      message: 'Ollama backend not properly initialized or no models configured.' 
+    };
+  }
+
+  const modelToCheck = getDefaultModel();
   if (!modelToCheck) {
-    return { status: 'error', message: 'No default Ollama model configured for status check.' };
+    return { 
+      status: 'error', 
+      message: 'No default Ollama model configured for status check.' 
+    };
   }
 
   try {
     // Use a simple, non-translation prompt for status check
     await callOllamaApi(modelToCheck.id, modelToCheck.endpoint, "Ping"); 
-    return { status: 'running' };
+    return { 
+      status: 'running',
+      message: `Ollama is running with model ${modelToCheck.id}`
+    };
   } catch (error) {
     console.error('Ollama status check error:', error);
     return {
       status: 'error',
-      message: `Failed to connect or get response from Ollama endpoint ${modelToCheck.endpoint}. Ensure Ollama is running and the model ${modelToCheck.id} exists. Error: ${error.message}`
+      message: `Failed to connect to Ollama. Ensure Ollama is running and the model ${modelToCheck.id} exists.`
     };
   }
 } 

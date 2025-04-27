@@ -1,0 +1,86 @@
+{
+  "version": "1.0",
+  "defaultTargetLanguage": "English",
+  "defaultSourceLanguage": "Auto-detect",
+  "supportedLanguages": [
+    { "code": "auto", "name": "Auto-detect", "enabled": true },
+    { "code": "en", "name": "English", "enabled": true },
+    { "code": "ja", "name": "Japanese", "enabled": true },
+    { "code": "es", "name": "Spanish", "enabled": true }
+  ],
+  "disabledLanguages": [
+    { "code": "fr", "name": "French" },
+    { "code": "de", "name": "German" },
+    { "code": "it", "name": "Italian" },
+    { "code": "pt", "name": "Portuguese" },
+    { "code": "ru", "name": "Russian" },
+    { "code": "zh", "name": "Chinese" },
+    { "code": "ko", "name": "Korean" },
+    { "code": "ar", "name": "Arabic" },
+    { "code": "hi", "name": "Hindi" }
+  ],
+  "activeBackend": "ollama",
+  "backendSettings": {
+    "ollama": {
+      "models": [
+        {
+          "id": "gemma3:1b",
+          "name": "Gemma 3 1B",
+          "endpoint": "http://localhost:11434/api/generate",
+          "default": true,
+          "promptTemplates": {
+            "natural": "Translate the following text from {sourceLanguage} to {targetLanguage}: \"{text}\". Provide only the translation without any additional commentary.",
+            "literal": "Translate the following text from {sourceLanguage} to {targetLanguage} word-for-word, preserving the original structure as much as possible: \"{text}\". Focus on direct translation of each word rather than natural flow. Provide only the translation without any additional commentary."
+          }
+        },
+        {
+          "id": "7shi/gemma-2-jpn-translate:2b-instruct-q8_0",
+          "name": "Gemma 2 2B Japanese",
+          "endpoint": "http://localhost:11434/api/generate",
+          "default": false,
+          "promptTemplates": {
+            "natural": "Translate this text from {sourceLanguage} to {targetLanguage}: \"{text}\". Provide only the translation without any additional commentary.",
+            "literal": "Translate this text from {sourceLanguage} to {targetLanguage} word-for-word: \"{text}\". Focus on direct translation. Provide only the translation without any additional commentary."
+          }
+        }
+      ],
+      "languagePairs": [
+        {
+          "source": "en",
+          "target": "ja",
+          "preferredModel": "7shi/gemma-2-jpn-translate:2b-instruct-q8_0"
+        },
+        {
+          "source": "ja",
+          "target": "en",
+          "preferredModel": "7shi/gemma-2-jpn-translate:2b-instruct-q8_0"
+        },
+        {
+          "source": "en",
+          "target": "es",
+          "preferredModel": "gemma3:1b"
+        },
+        {
+          "source": "es",
+          "target": "en",
+          "preferredModel": "gemma3:1b"
+        }
+      ],
+      "languageDetection": {
+        "patterns": [
+          { "pattern": "[\\u3040-\\u309F\\u30A0-\\u30FF\\u4E00-\\u9FAF]", "language": "ja", "preferredModel": "7shi/gemma-2-jpn-translate:2b-instruct-q8_0" },
+          { "pattern": "[\\u0400-\\u04FF]", "language": "ru", "preferredModel": "gemma3:1b" },
+          { "pattern": "[\\u0600-\\u06FF]", "language": "ar", "preferredModel": "gemma3:1b" },
+          { "pattern": "[\\u0900-\\u097F]", "language": "hi", "preferredModel": "gemma3:1b" },
+          { "pattern": "[\\u4E00-\\u9FFF]", "language": "zh", "preferredModel": "gemma3:1b" },
+          { "pattern": "[\\uAC00-\\uD7A3]", "language": "ko", "preferredModel": "gemma3:1b" },
+          { "pattern": ".*", "language": "en", "preferredModel": "gemma3:1b" }
+        ]
+      },
+      "fallbackModelId": "gemma3:1b"
+    },
+    "chromeApi": {
+      "detectOnly": false
+    }
+  }
+} 
