@@ -41,8 +41,7 @@
   "web_accessible_resources": [
     {
       "resources": [
-        "config.yml",
-        "backends/*.js"
+        "config.yml"
       ],
       "matches": ["<all_urls>"]
     }

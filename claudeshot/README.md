@@ -29,6 +29,10 @@ If you start Ollama manually in your terminal, you can enable CORS using an envi
   ollama serve --origins '*'
   ```
   *Note: Using `*` allows any origin. For better security, replace `*` with the specific Chrome extension ID (`chrome-extension://YOUR_EXTENSION_ID`) once you know it.*
+  ```bash
+  ollama serve --origins chrome-extension://jegoekkcjcgaadlfkkiamnajnkcamelj
+  ```
+
 
 **Option 2: Ollama Running as a Systemd Service (Common on Linux)**
 

@@ -16,9 +16,28 @@
  * and the contextMenus API to add right-click menu options for translation.
  */
 
-// Import the YAML parser library (ensure js-yaml.min.js is included in manifest.json)
-// If js-yaml is not already globally available, you might need an import statement
-// depending on how it's loaded. Assuming it's globally available for now.
+// Load non-module scripts like js-yaml
+try {
+  importScripts('js-yaml.min.js'); // Ensure this path is correct relative to extension root
+  console.log('js-yaml loaded successfully via importScripts.');
+} catch (e) {
+  console.error('Failed to load js-yaml.min.js via importScripts:', e);
+  // Handle the error appropriately - maybe fall back to default config without parsing
+}
+
+// Import all potential backend modules statically
+// NOTE: These backend files (ollama.js, etc.) MUST use ES module 'export' syntax now.
+import * as ollamaBackend from './backends/ollama.js';
+// Example: import * as anotherBackend from './backends/another.js';
+// ... import other backends as needed ...
+
+console.log('Background script loading (as module)...');
+
+// Map backend names (from config) to the imported modules
+const backendModules = {
+  ollama: ollamaBackend,
+  // another: anotherBackend, // Add other backends here
+};
 
 /**
  * background.js - Background Service Worker for Instant Translator Chrome Extension
@@ -26,8 +45,6 @@
  * Central coordinator: Loads config, manages context menus, handles messages,
  * and delegates tasks (translation, status checks) to the active backend module.
  */
-
-console.log('Background script loading...');
 
 // --- Global State ---
 let config = null; // Holds the parsed config.yml content
@@ -56,28 +73,39 @@ const defaultConfig = {
 async function initialize() {
   console.log('Initializing background script...');
   try {
+    // js-yaml should be available now if importScripts worked
     await loadAndProcessConfig();
+    // loadBackendModule will now select from pre-imported modules
     await loadBackendModule();
-    setupListeners();
+    setupListeners(); // Setup listeners only after successful init steps
     console.log(`Initialization complete. Active backend: ${config?.activeBackend || 'unknown'}`);
   } catch (error) {
     console.error('Initialization failed:', error);
-    // Use default config and attempt to load default backend if full init failed
-    if (!config) config = { ...defaultConfig };
-    if (!activeBackendModule) {
-        console.warn('Attempting to load default backend (ollama) after initialization error...');
-        config.activeBackend = 'ollama';
+    // Fallback logic might need adjustment depending on what failed
+    if (!config) {
+        console.warn('Config loading failed, using default config.');
+        config = { ...defaultConfig };
+        // Attempt to load default backend even if config failed
+        config.activeBackend = defaultConfig.activeBackend;
+    }
+    // Try loading the default backend if the initial load failed
+    if (!activeBackendModule && config.activeBackend) {
+        console.warn(`Attempting to load default backend (${config.activeBackend}) after initialization error...`);
         try {
-            await loadBackendModule();
+            await loadBackendModule(); // Try again with default name
             console.log('Successfully loaded default backend after error.');
+            setupListeners(); // Setup listeners if backend loaded successfully on retry
         } catch (backendError) {
             console.error('Failed to load default backend after initialization error:', backendError);
+            // Maybe setup listeners for limited functionality? Or maybe not.
+            // setupListeners(); // Decide if listeners should be set up even if backend fails
         }
+    } else if (activeBackendModule) {
+         // If config loaded but backend failed initially, but we have a module now? Unlikely path.
+         setupListeners();
     }
-    // Setup listeners even if init failed partially, maybe some parts work
-    if (!chrome.runtime.onInstalled.hasListeners(onInstalledListener)) {
-        setupListeners(); 
-    }
+    // Ensure listeners are setup if *something* succeeded, but maybe log a warning state.
+    // Consider if the extension should function at all without a backend.
   }
 }
 
@@ -90,6 +118,10 @@ async function loadAndProcessConfig() {
       throw new Error(`Failed to fetch config.yml: ${response.statusText}`);
     }
     const yamlText = await response.text();
+    // jsyaml should be globally available via importScripts
+    if (typeof jsyaml === 'undefined') {
+        throw new Error('jsyaml library not loaded correctly.');
+    }
     const loadedConfig = jsyaml.load(yamlText);
 
     // Merge with defaults to ensure all keys exist
@@ -108,8 +140,9 @@ async function loadAndProcessConfig() {
     console.log('Configuration loaded and processed successfully:', config);
 
   } catch (error) {
-    console.warn('Error loading or processing config.yml, using default configuration:', error);
+    console.error('Error loading or processing config.yml, using default configuration:', error); // Changed to error
     config = { ...defaultConfig };
+    // Ensure supportedLanguagesList is populated even on error using defaults
     supportedLanguagesList = [...(config.supportedLanguages || [])];
      if (config.disabledLanguages) {
       config.disabledLanguages.forEach(lang => {
@@ -118,33 +151,39 @@ async function loadAndProcessConfig() {
         }
       });
     }
+    // Re-throw the error so initialize() knows config loading failed
+    throw error;
   }
 }
 
 // Dynamically load the backend module specified in the config
 async function loadBackendModule() {
   if (!config || !config.activeBackend) {
+    // This case might happen if config loading failed AND default wasn't set properly
     throw new Error('Configuration or activeBackend not defined.');
   }
 
   const backendName = config.activeBackend;
-  const backendPath = `./backends/${backendName}.js`;
-  console.log(`Loading backend module: ${backendPath}`);
+  console.log(`Selecting backend module: ${backendName}`);
 
-  try {
-    // Use dynamic import to load the module
-    activeBackendModule = await import(backendPath);
-    console.log(`Successfully loaded backend module: ${backendName}`);
-    // Optionally, call an init function on the backend module if it exists
-    if (activeBackendModule.initialize) {
-      console.log(`Initializing backend module: ${backendName}...`);
-      await activeBackendModule.initialize(config); // Pass config if needed
-    }
-  } catch (error) {
-    console.error(`Failed to load backend module ${backendPath}:`, error);
-    activeBackendModule = null; // Ensure it's null if loading failed
-    throw new Error(`Failed to load backend module: ${backendName}. Check config.yml and ensure the module exists.`);
+  // Select the already imported module from the map
+  activeBackendModule = backendModules[backendName];
+
+  if (!activeBackendModule) {
+    console.error(`Backend module "${backendName}" not found in pre-imported modules. Check config.yml and static imports in background.js.`);
+    activeBackendModule = null; // Ensure it's null if selection failed
+    throw new Error(`Backend module "${backendName}" is not registered or failed to import.`);
   }
+
+  console.log(`Successfully selected backend module: ${backendName}`);
+
+  // Optionally, call an init function on the backend module if it exists
+  if (activeBackendModule.initialize) {
+    console.log(`Initializing backend module: ${backendName}...`);
+    // Pass config if needed - ensure the backend's initialize function handles potential missing config parts
+    await activeBackendModule.initialize(config);
+  }
+  // No need for try-catch around the import itself anymore
 }
 
 // --- Event Listeners Setup ---
