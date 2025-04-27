@@ -5,7 +5,7 @@
  * 1. Initializes default settings when the extension is first installed
  * 2. Sets up context menu items for quick translation of selected text
  * 3. Handles communication between different parts of the extension
- * 4. Performs health checks on the Ollama API to ensure it's running
+ * 4. Performs health checks on the active translation backend
  * 5. Loads and manages the central configuration file
  * 
  * The background script runs persistently in the background and maintains
@@ -33,6 +33,7 @@ console.log('Background script loading (as module)...');
 // Map backend names (from config) to the imported modules
 const backendModules = {
   ollama: ollamaBackend,
+  chromeApi: chromeApiBackend,
   // another: anotherBackend, // Add other backends here
 };
 
@@ -44,7 +45,7 @@ const backendModules = {
  */
 
 // --- Global State ---
-let config = null; // Holds the parsed config.yml content
+let config = null; // Holds the parsed config.json content
 let activeBackendModule = null; // Holds the dynamically loaded backend module
 let supportedLanguagesList = []; // Holds the combined list of supported languages
 
@@ -61,7 +62,25 @@ const defaultConfig = {
     { code: "es", name: "Spanish", enabled: true }
   ],
   disabledLanguages: [],
-  activeBackend: 'ollama' // Default backend
+  activeBackend: 'ollama', // Default backend
+  backendSettings: {
+    ollama: {
+      models: [
+        {
+          id: "gemma3:1b",
+          name: "Gemma 3 1B",
+          endpoint: "http://localhost:11434/api/generate",
+          default: true
+        }
+      ],
+      fallbackModelId: "gemma3:1b"
+    },
+    chromeApi: {
+      detectOnly: false,
+      name: "Chrome Translation API",
+      description: "Uses Chrome's built-in translation capabilities"
+    }
+  }
 };
 
 // --- Initialization ---
@@ -70,15 +89,13 @@ const defaultConfig = {
 async function initialize() {
   console.log('Initializing background script...');
   try {
-    // js-yaml is now imported via ES Module syntax
     await loadAndProcessConfig();
-    // loadBackendModule will now select from pre-imported modules
-    await loadBackendModule();
+    await loadActiveBackend();
     setupListeners(); // Setup listeners only after successful init steps
     console.log(`Initialization complete. Active backend: ${config?.activeBackend || 'unknown'}`);
   } catch (error) {
     console.error('Initialization failed:', error);
-    // Fallback logic might need adjustment depending on what failed
+    // Fallback logic
     if (!config) {
         console.warn('Config loading failed, using default config.');
         config = { ...defaultConfig };
@@ -89,20 +106,16 @@ async function initialize() {
     if (!activeBackendModule && config.activeBackend) {
         console.warn(`Attempting to load default backend (${config.activeBackend}) after initialization error...`);
         try {
-            await loadBackendModule(); // Try again with default name
+            await loadActiveBackend(); // Try again with default name
             console.log('Successfully loaded default backend after error.');
             setupListeners(); // Setup listeners if backend loaded successfully on retry
         } catch (backendError) {
             console.error('Failed to load default backend after initialization error:', backendError);
-            // Maybe setup listeners for limited functionality? Or maybe not.
-            // setupListeners(); // Decide if listeners should be set up even if backend fails
         }
     } else if (activeBackendModule) {
-         // If config loaded but backend failed initially, but we have a module now? Unlikely path.
+         // If config loaded but backend failed initially, but we have a module now
          setupListeners();
     }
-    // Ensure listeners are setup if *something* succeeded, but maybe log a warning state.
-    // Consider if the extension should function at all without a backend.
   }
 }
 
@@ -156,34 +169,51 @@ async function loadAndProcessConfig() {
   }
 }
 
-// Dynamically load the backend module specified in the config
-async function loadBackendModule() {
+// Load the active backend module specified in the config
+async function loadActiveBackend() {
   if (!config || !config.activeBackend) {
-    // This case might happen if config loading failed AND default wasn't set properly
     throw new Error('Configuration or activeBackend not defined.');
   }
 
   const backendName = config.activeBackend;
-  console.log(`Selecting backend module: ${backendName}`);
+  console.log(`Loading active backend module: ${backendName}`);
 
   // Select the already imported module from the map
-  activeBackendModule = backendModules[backendName];
+  const newBackendModule = backendModules[backendName];
 
-  if (!activeBackendModule) {
-    console.error(`Backend module "${backendName}" not found in pre-imported modules. Check config.yml and static imports in background.js.`);
-    activeBackendModule = null; // Ensure it's null if selection failed
+  if (!newBackendModule) {
+    console.error(`Backend module "${backendName}" not found in pre-imported modules. Check config.json and static imports in background.js.`);
     throw new Error(`Backend module "${backendName}" is not registered or failed to import.`);
   }
 
-  console.log(`Successfully selected backend module: ${backendName}`);
+  // If we're switching backends, clean up the old one if needed
+  if (activeBackendModule && activeBackendModule !== newBackendModule && activeBackendModule.cleanup) {
+    console.log(`Cleaning up previous backend module: ${config.activeBackend}`);
+    try {
+      await activeBackendModule.cleanup();
+    } catch (error) {
+      console.warn(`Error during cleanup of previous backend:`, error);
+      // Continue with the switch even if cleanup fails
+    }
+  }
 
-  // Optionally, call an init function on the backend module if it exists
+  // Set the new active backend module
+  activeBackendModule = newBackendModule;
+  console.log(`Successfully loaded backend module: ${backendName}`);
+
+  // Initialize the backend module if it has an initialize function
   if (activeBackendModule.initialize) {
     console.log(`Initializing backend module: ${backendName}...`);
-    // Pass config if needed - ensure the backend's initialize function handles potential missing config parts
-    await activeBackendModule.initialize(config);
+    try {
+      await activeBackendModule.initialize(config);
+      console.log(`Backend module ${backendName} initialized successfully`);
+    } catch (error) {
+      console.error(`Error initializing backend module ${backendName}:`, error);
+      throw error; // Re-throw to signal initialization failure
+    }
   }
-  // No need for try-catch around the import itself anymore
+
+  return true;
 }
 
 // --- Event Listeners Setup ---
@@ -209,59 +239,61 @@ function setupListeners() {
 
 // --- Event Handlers ---
 
-// Runs when the extension is first installed or updated
-const onInstalledListener = (details) => {
+// Handle extension installation or update
+function onInstalledListener(details) {
   console.log('Extension installed or updated:', details.reason);
-  // Ensure config is loaded before setting defaults
-  if (!config) {
-    console.warn('Config not loaded during onInstalled, attempting to load now...');
-    // We run initialize which includes config loading
-    initialize().then(() => {
-        setDefaultSettings();
-        createContextMenu();
-    });
-  } else {
-      setDefaultSettings();
-      createContextMenu();
+  
+  if (details.reason === 'install') {
+    // First-time installation
+    console.log('First-time installation, setting up default configuration');
+    // Default settings are already loaded in config
   }
-};
-
-function setDefaultSettings() {
-    // Initialize default settings in storage if they don't exist
-    chrome.storage.sync.get(['targetLanguage', 'sourceLanguage', 'translationStyle'], (result) => {
-        const settingsToSet = {};
-        if (!result.targetLanguage && config.defaultTargetLanguage) {
-            settingsToSet.targetLanguage = config.defaultTargetLanguage;
-        }
-        if (!result.sourceLanguage && config.defaultSourceLanguage) {
-            settingsToSet.sourceLanguage = config.defaultSourceLanguage;
-        }
-        if (!result.translationStyle && config.defaultTranslationStyle) {
-            settingsToSet.translationStyle = config.defaultTranslationStyle;
-        }
-        if (Object.keys(settingsToSet).length > 0) {
-             chrome.storage.sync.set(settingsToSet, () => {
-                 console.log('Default settings initialized in storage:', settingsToSet);
-             });
-        } else {
-             console.log('Default settings already exist in storage.');
-        }
-    });
+  
+  // Set up context menu items
+  setupContextMenu();
 }
 
-function createContextMenu() {
-    // Create context menu for quick translation
+// Set up context menu items for translation
+function setupContextMenu() {
+  // Remove existing items to avoid duplicates
+  chrome.contextMenus.removeAll(() => {
+    // Create main translate item
     chrome.contextMenus.create({
-        id: 'translateSelectedText',
-        title: 'Translate selected text',
-        contexts: ['selection']
-    }, () => {
-        if (chrome.runtime.lastError) {
-            console.warn("Context menu already exists or failed to create:", chrome.runtime.lastError.message);
-        } else {
-            console.log('Context menu created successfully.');
-        }
+      id: 'translate',
+      title: 'Translate Selection',
+      contexts: ['selection']
     });
+    
+    // Add language-specific items
+    const enabledLanguages = supportedLanguagesList.filter(lang => 
+      lang.enabled && lang.code !== 'auto'
+    );
+    
+    enabledLanguages.forEach(lang => {
+      chrome.contextMenus.create({
+        id: `translate-to-${lang.code}`,
+        parentId: 'translate',
+        title: `to ${lang.name}`,
+        contexts: ['selection']
+      });
+    });
+    
+    // Add listener for context menu clicks
+    chrome.contextMenus.onClicked.addListener((info, tab) => {
+      if (info.menuItemId.startsWith('translate-to-')) {
+        const targetLang = info.menuItemId.replace('translate-to-', '');
+        const text = info.selectionText;
+        
+        // Send message to content script to show translation
+        chrome.tabs.sendMessage(tab.id, {
+          action: 'translateSelection',
+          text: text,
+          targetLang: targetLang,
+          sourceLang: 'auto' // Auto-detect source language
+        });
+      }
+    });
+  });
 }
 
 // Handles clicks on the context menu item
@@ -283,74 +315,222 @@ const onContextMenuClicked = (info, tab) => {
 
 // Handles messages from popup or content scripts
 const onMessageReceived = (request, sender, sendResponse) => {
-  console.log(`Background received message: action=${request.action}`, request);
-
-  // Ensure the backend module is loaded before handling requests that need it
-  if (!activeBackendModule && (request.action === 'translate' || request.action === 'checkBackendStatus')) {
-    console.error('Backend module not loaded. Cannot handle request:', request.action);
-    sendResponse({ success: false, error: 'Backend module not loaded. Initialization might have failed.' });
-    return false; // Indicate sync response
-  }
-
+  console.log('Background received message:', request.action);
+  
+  // Handle different message types
   switch (request.action) {
-    case 'getConfig':
-      // Provide the processed configuration and the full list of languages
-      if (config && supportedLanguagesList) {
-        sendResponse({ success: true, config: config, supportedLanguages: supportedLanguagesList });
-      } else {
-         console.warn('getConfig requested before config was loaded.');
-         // Attempt to load config now and respond - might be too late if sync
-         loadAndProcessConfig().then(() => {
-             if (config && supportedLanguagesList) {
-                 sendResponse({ success: true, config: config, supportedLanguages: supportedLanguagesList });
-             } else {
-                 sendResponse({ success: false, error: 'Configuration could not be loaded.' });
-             }
-         });
-         return true; // Indicate async response needed
-      }
-      break;
-
-    case 'checkBackendStatus':
-      // Delegate status check to the active backend module
-      console.log(`Delegating status check to backend: ${config.activeBackend}`);
-      activeBackendModule.checkStatus()
-        .then(response => sendResponse(response))
-        .catch(error => {
-          console.error('Error checking backend status:', error);
-          sendResponse({ status: 'error', message: `Error checking status: ${error.message}` });
-        });
-      return true; // Indicate async response
-
     case 'translate':
-      // Delegate translation to the active backend module
-      console.log(`Delegating translation to backend: ${config.activeBackend}`);
-      // Get necessary details from the request
-      const { text, sourceLangCode, targetLangCode } = request;
-      // Get style from storage (or use default)
-      chrome.storage.sync.get('translationStyle', (result) => {
-        const style = result.translationStyle || config?.defaultTranslationStyle || 'natural';
-        console.log(`Using style: ${style} for translation`);
-        
-        activeBackendModule.translate(text, sourceLangCode, targetLangCode, style)
-          .then(response => sendResponse(response))
-          .catch(error => {
-            console.error('Error during backend translation:', error);
-            sendResponse({ success: false, error: `Translation failed: ${error.message}` });
-          });
+      handleTranslateRequest(request, sendResponse);
+      return true; // Keep the message channel open for async response
+      
+    case 'checkStatus':
+      handleStatusCheck(sendResponse);
+      return true; // Keep the message channel open for async response
+      
+    case 'getConfig':
+      sendResponse({
+        success: true,
+        config: config,
+        supportedLanguages: supportedLanguagesList
       });
-      return true; // Indicate async response
-
+      return false; // No async response needed
+      
+    case 'updateConfig':
+      handleConfigUpdate(request, sendResponse);
+      return true; // Keep the message channel open for async response
+      
+    case 'resetConfig':
+      handleConfigReset(sendResponse);
+      return true; // Keep the message channel open for async response
+      
+    case 'switchBackend':
+      handleBackendSwitch(request, sendResponse);
+      return true; // Keep the message channel open for async response
+      
+    case 'checkModelStatus':
+      handleModelStatusCheck(request, sendResponse);
+      return true; // Keep the message channel open for async response
+      
     default:
-      console.warn('Received unknown message action:', request.action);
-      sendResponse({ success: false, error: `Unknown action: ${request.action}` });
-      break;
+      console.warn('Unknown message action:', request.action);
+      sendResponse({ success: false, error: 'Unknown action' });
+      return false;
   }
-
-  // Return true if sendResponse will be called asynchronously (for translate and checkBackendStatus)
-  // For getConfig, it might be sync or async depending on whether config was loaded.
-  return false; // Default to sync response unless handled above
 };
+
+// Handle translation requests
+async function handleTranslateRequest(request, sendResponse) {
+  console.log('Translation request:', request);
+  
+  if (!activeBackendModule) {
+    sendResponse({
+      success: false,
+      error: 'No active translation backend available'
+    });
+    return;
+  }
+  
+  try {
+    // Call the active backend's translate method
+    const result = await activeBackendModule.translate(
+      request.text,
+      request.sourceLang || 'auto',
+      request.targetLang,
+      request.style || config.defaultTranslationStyle || 'natural'
+    );
+    
+    console.log('Translation result:', result);
+    sendResponse(result);
+  } catch (error) {
+    console.error('Translation error:', error);
+    sendResponse({
+      success: false,
+      error: `Translation failed: ${error.message}`
+    });
+  }
+}
+
+// Handle backend status check
+async function handleStatusCheck(sendResponse) {
+  if (!activeBackendModule) {
+    sendResponse({
+      success: false,
+      status: 'error',
+      message: 'No active translation backend available'
+    });
+    return;
+  }
+  
+  try {
+    // Call the active backend's checkStatus method
+    const status = await activeBackendModule.checkStatus();
+    sendResponse({
+      success: true,
+      ...status
+    });
+  } catch (error) {
+    console.error('Status check error:', error);
+    sendResponse({
+      success: false,
+      status: 'error',
+      message: `Status check failed: ${error.message}`
+    });
+  }
+}
+
+// Handle model status check
+async function handleModelStatusCheck(request, sendResponse) {
+  const modelId = request.modelId;
+  
+  if (!activeBackendModule || !activeBackendModule.checkModelStatus) {
+    sendResponse({
+      status: 'error',
+      message: 'Active backend does not support model status checks'
+    });
+    return;
+  }
+  
+  try {
+    // Call the active backend's checkModelStatus method
+    const status = await activeBackendModule.checkModelStatus(modelId);
+    sendResponse(status);
+  } catch (error) {
+    console.error(`Error checking model status for ${modelId}:`, error);
+    sendResponse({
+      status: 'error',
+      message: error.message
+    });
+  }
+}
+
+// Handle config update
+async function handleConfigUpdate(request, sendResponse) {
+  try {
+    // Update the global config
+    const oldBackend = config.activeBackend;
+    config = request.config;
+    
+    // Save to storage for persistence
+    await chrome.storage.local.set({ config: config });
+    
+    // Check if the backend has changed
+    if (oldBackend !== config.activeBackend) {
+      console.log(`Backend changed from ${oldBackend} to ${config.activeBackend}`);
+      await loadActiveBackend();
+    } else if (activeBackendModule && activeBackendModule.initialize) {
+      // Re-initialize the active backend with the new config
+      await activeBackendModule.initialize(config);
+    }
+    
+    // Rebuild the supported languages list
+    supportedLanguagesList = [...(config.supportedLanguages || [])];
+    if (config.disabledLanguages) {
+      config.disabledLanguages.forEach(lang => {
+        if (!supportedLanguagesList.some(l => l.code === lang.code)) {
+          supportedLanguagesList.push({...lang, enabled: false });
+        }
+      });
+    }
+    
+    // Rebuild context menu with updated languages
+    setupContextMenu();
+    
+    sendResponse({ success: true });
+  } catch (error) {
+    console.error('Error updating config:', error);
+    sendResponse({ success: false, error: error.message });
+  }
+}
+
+// Handle config reset
+async function handleConfigReset(sendResponse) {
+  try {
+    // Reset to default config
+    await loadAndProcessConfig();
+    
+    // Re-initialize the active backend
+    await loadActiveBackend();
+    
+    // Rebuild context menu
+    setupContextMenu();
+    
+    sendResponse({ success: true });
+  } catch (error) {
+    console.error('Error resetting config:', error);
+    sendResponse({ success: false, error: error.message });
+  }
+}
+
+// Handle backend switch
+async function handleBackendSwitch(request, sendResponse) {
+  try {
+    const newBackend = request.backend;
+    
+    if (!backendModules[newBackend]) {
+      throw new Error(`Backend "${newBackend}" not found`);
+    }
+    
+    // Update config with new backend
+    config.activeBackend = newBackend;
+    
+    // Save to storage
+    await chrome.storage.local.set({ config: config });
+    
+    // Load the new backend
+    await loadActiveBackend();
+    
+    sendResponse({ 
+      success: true,
+      message: `Switched to ${newBackend} backend successfully`
+    });
+  } catch (error) {
+    console.error('Error switching backend:', error);
+    sendResponse({ 
+      success: false, 
+      error: error.message 
+    });
+  }
+}
 
 // --- Start Initialization ---
 initialize(); 

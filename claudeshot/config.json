@@ -80,7 +80,27 @@
       "fallbackModelId": "gemma3:1b"
     },
     "chromeApi": {
-      "detectOnly": false
+      "detectOnly": false,
+      "name": "Chrome Translation API",
+      "description": "Uses Chrome's built-in translation capabilities",
+      "languagePairs": [
+        {
+          "source": "en",
+          "target": "ja"
+        },
+        {
+          "source": "ja",
+          "target": "en"
+        },
+        {
+          "source": "en",
+          "target": "es"
+        },
+        {
+          "source": "es",
+          "target": "en"
+        }
+      ]
     }
   }
 } 

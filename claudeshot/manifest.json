@@ -41,7 +41,9 @@
   "web_accessible_resources": [
     {
       "resources": [
-        "config.json"
+        "config.json",
+        "advanced-settings.html",
+        "advanced-settings.css"
       ],
       "matches": ["<all_urls>"]
     }

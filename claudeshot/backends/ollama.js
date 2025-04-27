@@ -309,4 +309,38 @@ export async function checkStatus() {
       message: `Failed to connect to Ollama. Ensure Ollama is running and the model ${modelToCheck.id} exists.`
     };
   }
+}
+
+/**
+ * Checks if a specific model is available in Ollama.
+ * 
+ * @param {string} modelId The ID of the model to check
+ * @returns {Promise<object>} Promise resolving to { status: 'running' } or { status: 'error', message: string }
+ */
+export async function checkModelStatus(modelId) {
+  console.log(`Checking status for model: ${modelId}`);
+  
+  // Find the model in the config
+  const model = ollamaConfig.models?.find(m => m.id === modelId);
+  if (!model) {
+    return { 
+      status: 'error', 
+      message: `Model ${modelId} not found in configuration.` 
+    };
+  }
+
+  try {
+    // Use a simple, non-translation prompt for status check
+    await callOllamaApi(modelId, model.endpoint || "http://localhost:11434/api/generate", "Ping"); 
+    return { 
+      status: 'running',
+      message: `Model ${modelId} is available`
+    };
+  } catch (error) {
+    console.error(`Status check error for model ${modelId}:`, error);
+    return {
+      status: 'error',
+      message: `Model ${modelId} is not available: ${error.message}`
+    };
+  }
 } 

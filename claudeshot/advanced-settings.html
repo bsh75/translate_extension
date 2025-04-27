@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Advanced Settings - Instant Translator</title>
+  <link rel="stylesheet" href="advanced-settings.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Advanced Settings</h1>
+      <a href="popup.html" class="back-button">← Back to Main Settings</a>
+    </header>
+
+    <section id="models-section">
+      <h2>Available Models</h2>
+      <div class="loading" id="models-loading">Loading models...</div>
+      <div id="models-container" class="hidden">
+        <!-- Models will be populated here -->
+      </div>
+      <div id="models-error" class="error hidden">Error loading models</div>
+    </section>
+
+    <section id="language-pairs-section">
+      <h2>Language Pair Settings</h2>
+      <div class="loading" id="pairs-loading">Loading language pairs...</div>
+      <div id="pairs-container" class="hidden">
+        <!-- Language pairs will be populated here -->
+      </div>
+      <div id="pairs-error" class="error hidden">Error loading language pairs</div>
+    </section>
+
+    <section id="default-settings-section">
+      <h2>Default Model Settings</h2>
+      <div class="form-group">
+        <label for="default-model">Default Model:</label>
+        <select id="default-model">
+          <!-- Models will be populated here -->
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="fallback-model">Fallback Model:</label>
+        <select id="fallback-model">
+          <!-- Models will be populated here -->
+        </select>
+      </div>
+    </section>
+
+    <div class="actions">
+      <button id="save-settings" class="primary-button">Save Settings</button>
+      <button id="reset-settings" class="secondary-button">Reset to Defaults</button>
+    </div>
+
+    <div id="status-container" class="hidden">
+      <!-- Status messages will appear here -->
+    </div>
+  </div>
+
+  <script src="advanced-settings.js"></script>
+</body>
+</html> 
